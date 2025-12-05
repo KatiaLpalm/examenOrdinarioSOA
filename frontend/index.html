@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Mini Frontend - Alumno (SOAP) & Curso (REST)</title>
+<style>
+  body{font-family:Arial, sans-serif; margin:20px; max-width:1000px;}
+  .grid{display:flex; gap:20px; flex-wrap:wrap;}
+  .card{border:1px solid #ddd;padding:16px;border-radius:8px; width:420px; box-shadow: 2px 2px 6px rgba(0,0,0,0.03);}
+  label{display:block;margin-top:10px;font-weight:600}
+  input, textarea {width:100%; padding:8px; margin-top:6px; box-sizing:border-box;}
+  button{margin-top:10px;padding:8px 12px; cursor:pointer;}
+  .output{white-space:pre-wrap;background:#f8f8f8;padding:10px;margin-top:10px;border-radius:6px}
+</style>
+</head>
+<body>
+<h1>Mini Frontend Unificado</h1>
+<p>Alumno: consume SOAP vía bridge (Flask). Curso: consume REST directamente (Spring Boot).</p>
+
+<div class="grid">
+
+  <!-- Alumno: Registrar / Editar -->
+  <div class="card">
+    <h3>alumno (soap)</h3>
+
+    <label>Matrícula</label>
+    <input id="al_matricula" placeholder="ej. 2025001">
+
+    <label>Nombre</label>
+    <input id="al_nombre">
+
+    <label>Apellido</label>
+    <input id="al_apellido">
+
+    <label>Carrera</label>
+    <input id="al_carrera">
+
+    <label>Estatus</label>
+    <input id="al_estatus">
+
+    <div>
+      <button onclick="soapRegistrarAlumno()">registrar alumno</button>
+      <button onclick="soapEditarAlumno()">editar alumno</button>
+      <button onclick="soapConsultarAlumno()">consultar por matrícula</button>
+      <button onclick="soapEliminarAlumno()">eliminar por matrícula</button>
+    </div>
+
+    <div id="al_resp" class="output"></div>
+  </div>
+
+  <!-- Curso: Registrar -->
+  <div class="card">
+    <h3>curso (rest)</h3>
+
+    <label>Nombre</label>
+    <input id="cu_nombre">
+
+    <label>Descripción</label>
+    <input id="cu_descripcion">
+
+    <label>Créditos</label>
+    <input id="cu_creditos" type="number">
+
+    <label>Estado</label>
+    <input id="cu_estado">
+
+    <label>Fecha Inicio</label>
+    <input id="cu_fecha" type="date">
+
+    <div>
+      <button onclick="restRegistrarCurso()">registrar curso</button>
+      <button onclick="restGetAllCursos()">listar cursos</button>
+    </div>
+
+    <div style="margin-top:12px">
+      <label>Eliminar curso por id</label>
+      <input id="cu_delete_id">
+      <button onclick="restEliminarPorId()">eliminar por id</button>
+
+      <label>Eliminar curso por nombre</label>
+      <input id="cu_delete_nombre">
+      <button onclick="restEliminarPorNombre()">eliminar por nombre</button>
+
+      <label>Eliminar curso por fecha inicio</label>
+      <input id="cu_delete_fecha" type="date">
+      <button onclick="restEliminarPorFecha()">eliminar por fecha</button>
+    </div>
+
+    <div id="cu_resp" class="output"></div>
+  </div>
+
+  <!-- Lista de cursos -->
+  <div class="card" style="flex:1 1 100%">
+    <h3>lista de cursos (última consulta)</h3>
+    <div id="cu_list" class="output">No hay consulta aún.</div>
+  </div>
+
+</div>
+
+<script>
+/*
+  Ajusta las URL según dónde corras cada servicio:
+  - BRIDGE_SOAP_URL: endpoint Flask (reenvía a tu Spyne SOAP)
+  - REST_URL: endpoint base de tus cursos (Spring Boot)
+*/
+const BRIDGE_SOAP_URL = "http://localhost:5000/alumno";   // bridge.py
+const REST_URL = "http://localhost:8081/cursos";          // CursoController
+
+/* --------- SOAP helpers (XML) ---------- */
+
+function buildEnvelope(operationName, bodyInner) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+  <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                    xmlns:alum="alumno.soap">
+    <soapenv:Header/>
+    <soapenv:Body>
+      <alum:${operationName}>
+        ${bodyInner}
+      </alum:${operationName}>
+    </soapenv:Body>
+  </soapenv:Envelope>`;
+}
+
+function soapPost(xml) {
+  return fetch(BRIDGE_SOAP_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/xml" },
+    body: xml
+  }).then(r => r.text());
+}
+
+/* ---------- SOAP Actions ---------- */
+
+function soapRegistrarAlumno() {
+  const m = document.getElementById("al_matricula").value.trim();
+  if(!m) return alert("Indica matrícula");
+  const body = `
+    <matricula>${escapeXml(m)}</matricula>
+    <nombre>${escapeXml(document.getElementById("al_nombre").value)}</nombre>
+    <apellido>${escapeXml(document.getElementById("al_apellido").value)}</apellido>
+    <carrera>${escapeXml(document.getElementById("al_carrera").value)}</carrera>
+    <estatus>${escapeXml(document.getElementById("al_estatus").value)}</estatus>
+  `;
+  const xml = buildEnvelope("registrar_alumno", body);
+  setAlumnoResp("Enviando registro...");
+  soapPost(xml).then(text => setAlumnoResp(text)).catch(err => setAlumnoResp("ERROR: "+err));
+}
+
+function soapEditarAlumno() {
+  const m = document.getElementById("al_matricula").value.trim();
+  if(!m) return alert("Indica matrícula");
+  const body = `
+    <matricula>${escapeXml(m)}</matricula>
+    <nombre>${escapeXml(document.getElementById("al_nombre").value)}</nombre>
+    <apellido>${escapeXml(document.getElementById("al_apellido").value)}</apellido>
+    <carrera>${escapeXml(document.getElementById("al_carrera").value)}</carrera>
+    <estatus>${escapeXml(document.getElementById("al_estatus").value)}</estatus>
+  `;
+  const xml = buildEnvelope("editar_alumno", body);
+  setAlumnoResp("Enviando edición...");
+  soapPost(xml).then(text => setAlumnoResp(text)).catch(err => setAlumnoResp("ERROR: "+err));
+}
+
+function soapConsultarAlumno() {
+  const m = document.getElementById("al_matricula").value.trim();
+  if(!m) return alert("Indica matrícula");
+  const body = `<matricula>${escapeXml(m)}</matricula>`;
+  const xml = buildEnvelope("consultar_alumno", body);
+  setAlumnoResp("Consultando...");
+  soapPost(xml).then(text => setAlumnoResp(text)).catch(err => setAlumnoResp("ERROR: "+err));
+}
+
+function soapEliminarAlumno() {
+  const m = document.getElementById("al_matricula").value.trim();
+  if(!m) return alert("Indica matrícula");
+  const body = `<matricula>${escapeXml(m)}</matricula>`;
+  const xml = buildEnvelope("eliminar_alumno", body);
+  setAlumnoResp("Eliminando...");
+  soapPost(xml).then(text => setAlumnoResp(text)).catch(err => setAlumnoResp("ERROR: "+err));
+}
+
+function setAlumnoResp(txt){ document.getElementById("al_resp").innerText = txt; }
+
+/* ---------- REST Curso actions ---------- */
+
+function restRegistrarCurso(){
+  const data = {
+    nombre: document.getElementById("cu_nombre").value,
+    descripcion: document.getElementById("cu_descripcion").value,
+    creditos: parseInt(document.getElementById("cu_creditos").value || 0),
+    estado: document.getElementById("cu_estado").value,
+    fechaInicio: document.getElementById("cu_fecha").value
+  };
+  fetch(REST_URL, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(data)
+  })
+  .then(r => r.json())
+  .then(j => {
+    document.getElementById("cu_resp").innerText = "Registrado: " + JSON.stringify(j);
+    restGetAllCursos();
+  })
+  .catch(e => document.getElementById("cu_resp").innerText = "ERROR: "+e);
+}
+
+function restGetAllCursos(){
+  fetch(REST_URL)
+    .then(r => r.json())
+    .then(list => {
+      document.getElementById("cu_list").innerText = JSON.stringify(list, null, 2);
+    })
+    .catch(e => document.getElementById("cu_list").innerText = "ERROR: "+e);
+}
+
+function restEliminarPorId(){
+  const id = document.getElementById("cu_delete_id").value;
+  if(!id) return alert("Indica id a eliminar");
+  fetch(`${REST_URL}/${id}`, { method: "DELETE" })
+    .then(() => { alert("Eliminado por id"); restGetAllCursos(); })
+    .catch(e => alert("ERROR: "+e));
+}
+
+function restEliminarPorNombre(){
+  const nombre = document.getElementById("cu_delete_nombre").value;
+  if(!nombre) return alert("Indica nombre");
+  fetch(`${REST_URL}/nombre/${encodeURIComponent(nombre)}`, { method: "DELETE" })
+    .then(()=>{ alert("Eliminado por nombre"); restGetAllCursos(); })
+    .catch(e => alert("ERROR: "+e));
+}
+
+function restEliminarPorFecha(){
+  const fecha = document.getElementById("cu_delete_fecha").value;
+  if(!fecha) return alert("Indica fecha");
+  fetch(`${REST_URL}/fecha/${fecha}`, { method: "DELETE" })
+    .then(()=>{ alert("Eliminado por fecha"); restGetAllCursos(); })
+    .catch(e => alert("ERROR: "+e));
+}
+
+/* ---------- util ---------- */
+function escapeXml(unsafe) {
+  if(unsafe === undefined || unsafe === null) return "";
+  return unsafe.replace(/[<>&'"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;',"\'":'&apos;','"':'&quot;'}[c]; });
+}
+</script>
+</body>
+</html>
